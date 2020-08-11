@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
-	"github.com/rubenv/sql-migrate"
+	migrate "github.com/rubenv/sql-migrate"
 	"gopkg.in/gorp.v1"
 	"gopkg.in/yaml.v2"
 
@@ -33,11 +33,12 @@ func ConfigFlags(f *flag.FlagSet) {
 }
 
 type Environment struct {
-	Dialect    string `yaml:"dialect" envconfig:"DIALECT"`
-	DataSource string `yaml:"datasource" envconfig:"DATASOURCE"`
-	Dir        string `yaml:"dir" envconfig:"DIR"`
-	TableName  string `yaml:"table" envconfig:"TABLE"`
-	SchemaName string `yaml:"schema" envconfig:"SCHEMA"`
+	Dialect       string `yaml:"dialect" envconfig:"DIALECT"`
+	DataSource    string `yaml:"datasource" envconfig:"DATASOURCE"`
+	Dir           string `yaml:"dir" envconfig:"DIR"`
+	TableName     string `yaml:"table" envconfig:"TABLE"`
+	SchemaName    string `yaml:"schema" envconfig:"SCHEMA"`
+	IgnoreUnknown bool   `yaml:"ignore_unknown" envconfig:"IGNORE_UNKNOWN"`
 }
 
 func ConfigPresent() bool {
@@ -109,6 +110,9 @@ func GetEnvironment() (*Environment, error) {
 	if env.SchemaName != "" {
 		migrate.SetSchema(env.SchemaName)
 	}
+
+	// False by default
+	migrate.SetIgnoreUnknown(env.IgnoreUnknown)
 
 	return env, nil
 }
