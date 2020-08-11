@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/gobuffalo/packr"
+	"github.com/gobuffalo/packr/v2"
 	_ "github.com/mattn/go-sqlite3"
 	. "gopkg.in/check.v1"
 	"gopkg.in/gorp.v1"
@@ -162,7 +162,7 @@ func (s *SqliteMigrateSuite) TestAssetMigrate(c *C) {
 
 func (s *SqliteMigrateSuite) TestPackrMigrate(c *C) {
 	migrations := &PackrMigrationSource{
-		Box: packr.NewBox("test-migrations"),
+		Box: packr.New("migrations", "test-migrations"),
 	}
 
 	// Executes two migrations
@@ -516,6 +516,47 @@ func (s *SqliteMigrateSuite) TestPlanMigrationWithUnknownDatabaseMigrationApplie
 	c.Assert(err, FitsTypeOf, &PlanError{})
 }
 
+func (s *SqliteMigrateSuite) TestPlanMigrationWithIgnoredUnknownDatabaseMigrationApplied(c *C) {
+	migrations := &MemoryMigrationSource{
+		Migrations: []*Migration{
+			&Migration{
+				Id:   "1_create_table.sql",
+				Up:   []string{"CREATE TABLE people (id int)"},
+				Down: []string{"DROP TABLE people"},
+			},
+			&Migration{
+				Id:   "2_alter_table.sql",
+				Up:   []string{"ALTER TABLE people ADD COLUMN first_name text"},
+				Down: []string{"SELECT 0"}, // Not really supported
+			},
+			&Migration{
+				Id:   "10_add_last_name.sql",
+				Up:   []string{"ALTER TABLE people ADD COLUMN last_name text"},
+				Down: []string{"ALTER TABLE people DROP COLUMN last_name"},
+			},
+		},
+	}
+	SetIgnoreUnknown(true)
+	n, err := Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 3)
+
+	// Note that migration 10_add_last_name.sql is missing from the new migrations source
+	// so it is considered an "unknown" migration for the planner.
+	migrations.Migrations = append(migrations.Migrations[:2], &Migration{
+		Id:   "10_add_middle_name.sql",
+		Up:   []string{"ALTER TABLE people ADD COLUMN middle_name text"},
+		Down: []string{"ALTER TABLE people DROP COLUMN middle_name"},
+	})
+
+	_, _, err = PlanMigration(s.Db, "sqlite3", migrations, Up, 0)
+	c.Assert(err, IsNil)
+
+	_, _, err = PlanMigration(s.Db, "sqlite3", migrations, Down, 0)
+	c.Assert(err, IsNil)
+	SetIgnoreUnknown(false) // Make sure we are not breaking other tests as this is globaly set
+}
+
 // TestExecWithUnknownMigrationInDatabase makes sure that problems found with planning the
 // migrations are propagated and returned by Exec.
 func (s *SqliteMigrateSuite) TestExecWithUnknownMigrationInDatabase(c *C) {
@@ -556,4 +597,54 @@ func (s *SqliteMigrateSuite) TestExecWithUnknownMigrationInDatabase(c *C) {
 	c.Assert(err, NotNil)
 	_, err = s.DbMap.Exec("SELECT age FROM people")
 	c.Assert(err, NotNil)
+}
+
+func (s *SqliteMigrateSuite) TestRunMigrationObjDefaultTable(c *C) {
+	migrations := &MemoryMigrationSource{
+		Migrations: sqliteMigrations[:1],
+	}
+
+	ms := MigrationSet{}
+	// Executes one migration
+	n, err := ms.Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 1)
+
+	// Can use table now
+	_, err = s.DbMap.Exec("SELECT * FROM people")
+	c.Assert(err, IsNil)
+
+	// Uses default tableName
+	_, err = s.DbMap.Exec("SELECT * FROM gorp_migrations")
+	c.Assert(err, IsNil)
+
+	// Shouldn't apply migration again
+	n, err = ms.Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 0)
+}
+
+func (s *SqliteMigrateSuite) TestRunMigrationObjOtherTable(c *C) {
+	migrations := &MemoryMigrationSource{
+		Migrations: sqliteMigrations[:1],
+	}
+
+	ms := MigrationSet{TableName: "other_migrations"}
+	// Executes one migration
+	n, err := ms.Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 1)
+
+	// Can use table now
+	_, err = s.DbMap.Exec("SELECT * FROM people")
+	c.Assert(err, IsNil)
+
+	// Uses default tableName
+	_, err = s.DbMap.Exec("SELECT * FROM other_migrations")
+	c.Assert(err, IsNil)
+
+	// Shouldn't apply migration again
+	n, err = ms.Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 0)
 }
