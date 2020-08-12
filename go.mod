@@ -7,6 +7,7 @@ require (
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/gobuffalo/packr/v2 v2.7.1
 	github.com/godror/godror v0.13.3
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.2.0
 	github.com/mattn/go-oci8 v0.0.7
 	github.com/mattn/go-sqlite3 v1.12.0
